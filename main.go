@@ -4,13 +4,14 @@ import (
   "bytes"
   "encoding/base64"
   "encoding/json"
-  "flag"
   "io/ioutil"
   "log"
   "net/http"
+  "os"
   "strconv"
   "time"
 
+  "github.com/joho/godotenv"
   "github.com/golang/protobuf/proto"
   "github.com/julienschmidt/httprouter"
   "github.com/nats-io/go-nats"
@@ -49,12 +50,15 @@ type AudioResults struct {
 }
 
 func main() {
-  // Parse flags
-  flag.StringVar(&listen, "listen", ":8080", "host and port to listen on")
-  flag.StringVar(&apiKey, "api-key", "AIzaSyDxSXDefzw9gXCQaVzOCYlRn_vcC9Da9Q0", "Google Cloud API key")
-  flag.StringVar(&natsHost, "nats", "nats://localhost:4222", "host and port of NATS")
-  flag.Parse()
-
+  // Load .env
+  err := godotenv.Load()
+  if err != nil {
+    log.Fatal("Error loading .env file")
+  }
+  listen = os.Getenv("LISTEN")
+  natsHost = os.Getenv("NATS")
+  apiKey = os.Getenv("API_KEY")
+  
   //NATS
   nc, err := nats.Connect(natsHost)
   if err != nil {

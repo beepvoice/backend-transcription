@@ -8,15 +8,15 @@ Beep backend handling transcription of bites to text via Google Cloud.
 go build && ./backend-transcription
 ```
 
-## Flags
+## Environment Variables
 
-Flags are supplied to the compiled go program in the form ```-flag=stuff```.
+Supply environment variables by either exporting them or editing ```.env```.
 
-| Flag | Description | Default |
+| ENV | Description | Default |
 | ---- | ----------- | ------- |
-| listen | Port number to listen on | 8080 |
-| nats | URL of NATS | nats://localhost:4222 |
-| api-key | Google Cloud API key | Something that works. Probably |
+| LISTEN | Host and port number to listen on | :8080 |
+| NATS | Host and port of nats | nats://localhost:4222 |
+| API_KEY | Google Cloud API key | Something that works. Probably |
 
 ## API
 

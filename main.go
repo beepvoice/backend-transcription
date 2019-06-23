@@ -11,6 +11,8 @@ import (
   "strconv"
   "time"
 
+  . "transcription/backend-protobuf/go"
+
   "github.com/joho/godotenv"
   "github.com/golang/protobuf/proto"
   "github.com/julienschmidt/httprouter"

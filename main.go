@@ -8,18 +8,14 @@ import (
   "log"
   "net/http"
   "os"
-  "strconv"
-  "time"
 
   . "transcription/backend-protobuf/go"
 
   "github.com/joho/godotenv"
   "github.com/golang/protobuf/proto"
-  "github.com/julienschmidt/httprouter"
   "github.com/nats-io/go-nats"
 )
 
-var listen string
 var apiKey string
 var natsHost string
 
@@ -57,10 +53,9 @@ func main() {
   if err != nil {
     log.Fatal("Error loading .env file")
   }
-  listen = os.Getenv("LISTEN")
   natsHost = os.Getenv("NATS")
   apiKey = os.Getenv("API_KEY")
-  
+
   //NATS
   nc, err := nats.Connect(natsHost)
   if err != nil {
@@ -68,17 +63,10 @@ func main() {
     return
   }
 
-  nc.Subscribe("new_bite", NewBite)
+  nc.Subscribe("bite", NewBite)
 
-  // Routes
-	router := httprouter.New()
-
-  router.GET("/transcription/:key/scan", ScanTranscription) // Scanning
-  router.GET("/transcription/:key/start/:start", GetTranscription)
-
-  // Start server
-  log.Printf("starting server on %s", listen)
-  log.Fatal(http.ListenAndServe(listen, router))
+  log.Printf("listening on nats")
+  select { }
 }
 
 func NewBite(m *nats.Msg) {
@@ -116,30 +104,12 @@ func NewBite(m *nats.Msg) {
   resp, err := client.Do(req)
   if err != nil {
     log.Println(err)
-    errRes := Response {
-      Code: 500,
-      Message: []byte(http.StatusText(http.StatusInternalServerError)),
-      Client: bite.Client,
-    }
-    errResBytes, err := proto.Marshal(&errRes)
-    if err == nil {
-      nc.Publish("res", errResBytes)
-    }
     return
   }
 
   body, err := ioutil.ReadAll(resp.Body)
   if err != nil {
     log.Println(err)
-    errRes := Response {
-      Code: 500,
-      Message: []byte(http.StatusText(http.StatusInternalServerError)),
-      Client: bite.Client,
-    }
-    errResBytes, err := proto.Marshal(&errRes)
-    if err == nil {
-      nc.Publish("res", errResBytes)
-    }
     return
   }
 
@@ -147,15 +117,6 @@ func NewBite(m *nats.Msg) {
   err = json.Unmarshal(body, &results)
   if err != nil {
     log.Println(err)
-    errRes := Response {
-      Code: 500,
-      Message: []byte(http.StatusText(http.StatusInternalServerError)),
-      Client: bite.Client,
-    }
-    errResBytes, err := proto.Marshal(&errRes)
-    if err == nil {
-      nc.Publish("res", errResBytes)
-    }
     return
   }
 
@@ -174,109 +135,7 @@ func NewBite(m *nats.Msg) {
     nc.Publish("new_store", storeRequestBytes)
   } else {
     // 404
-    errRes := Response {
-      Code: 404,
-      Message: []byte(http.StatusText(http.StatusNotFound)),
-      Client: bite.Client,
-    }
-    errResBytes, err := proto.Marshal(&errRes)
-    if err == nil {
-      nc.Publish("res", errResBytes)
-    }
+    log.Println("google api could not be reached")
   }
 }
 
-// Route handlers
-func ParseStartString(start string) (uint64, error) {
-	return strconv.ParseUint(start, 10, 64)
-}
-
-func ScanTranscription(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-  from, err := ParseStartString(r.FormValue("from"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	to, err := ParseStartString(r.FormValue("to"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-
-  scanRequest := ScanRequest {
-    Key: p.ByName("key"),
-    From: from,
-    To: to,
-    Type: "transcription",
-  }
-
-  drBytes, err := proto.Marshal(&scanRequest);
-  if err != nil {
-    http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-    return
-  }
-
-  msg, err := nc.Request("scan_store", drBytes, 10 * time.Second) // 10s timeout
-  if err != nil {
-    http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-    return
-  }
-
-  res := Response {}
-  if err := proto.Unmarshal(msg.Data, &res); err != nil {
-    log.Println(err)
-    http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-    return
-  }
-
-  if res.Code == 200 {
-    w.Header().Set("Content-Type", "application/json")
-  	w.Write(res.Message)
-  } else if len(res.Message) == 0 {
-    http.Error(w, http.StatusText(int(res.Code)), int(res.Code))
-  } else {
-    http.Error(w, string(res.Message), int(res.Code))
-  }
-}
-
-func GetTranscription(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-  start, err := ParseStartString(p.ByName("start"))
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-
-  dataRequest := DataRequest {
-    Key: p.ByName("key"),
-    Start: start,
-    Type: "transcription",
-  }
-
-  drBytes, err := proto.Marshal(&dataRequest);
-  if err != nil {
-    http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-    return
-  }
-
-  msg, err := nc.Request("request_store", drBytes, 10 * time.Second) // 10s timeout
-  if err != nil {
-    http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-    return
-  }
-
-  res := Response {}
-  if err := proto.Unmarshal(msg.Data, &res); err != nil {
-    log.Println(err)
-    http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-    return
-  }
-
-  if res.Code == 200 {
-    w.Header().Add("Content-Type", "text/plain")
-  	w.Write(res.Message)
-  } else if len(res.Message) == 0 {
-    http.Error(w, http.StatusText(int(res.Code)), int(res.Code))
-  } else {
-    http.Error(w, string(res.Message), int(res.Code))
-  }
-}
